@@ -1,11 +1,11 @@
 (ns dnd-clock.core
-    (:require 
-              [reagent.core :as r :refer [atom]]
-              [reagent.dom :as rd]
-              [cljs-time.core :as time]
-              [cljs-time.format :as date-format]
-              [cljs.pprint :refer [pprint]]
-              [alandipert.storage-atom :refer [local-storage]]))
+  (:require
+    [reagent.core :as r :refer [atom]]
+    [reagent.dom :as rd]
+    [cljs-time.core :as time]
+    [cljs-time.format :as date-format]
+    [cljs.pprint :refer [pprint]]
+    [alandipert.storage-atom :refer [local-storage]]))
 
 (enable-console-print!)
 
@@ -70,7 +70,7 @@
 
 ;; deserialization
 (defn events-to-string [events]
-  (map
+  (mapv
     (fn [event] conj {
                       :current-time  (time-to-string (:current-time event))
                       :last-time     (time-to-string (:last-time event))
@@ -92,7 +92,7 @@
     events))
 
 (defn events-from-string [events]
-  (map
+  (mapv
     (fn [event] (state-change-event
                   (time-from-string (:current-time event))
                   (time-from-string (:last-time event))
@@ -104,7 +104,7 @@
   (.stringify js/JSON (clj->js (events-to-string events))))
 
 (defn parse-events-json [json]
-  (into [] (events-from-string (events-map-to-clj (js->clj (.parse js/JSON json))))))
+  (events-from-string (events-map-to-clj (js->clj (.parse js/JSON json)))))
 
 (defn initialize-time []
   (if-not (empty? (:time @prefs)) (time-from-string (:time @prefs)) initial-time))
@@ -232,19 +232,33 @@
                   [:div (current-phase-info shift)]]) (reverse @time-shifts)))]
    ])
 
+(defn update-events! [next-state]
+  (if-not (zero? (time/in-seconds (time/interval @game-time (last-time-shift))))
+    (swap! time-shifts conj (state-change-event @game-time (last-time-shift) next-state (last-time-state))))
+  )
+
+(defn change-state! [next-state]
+  (if-not (= @game-state next-state)
+    (reset! game-state next-state)))
+
+(defn pause-toggle! []
+
+  (if (= @game-state :pause)
+    (reset! game-state (keyword (last-time-state)))
+    (reset! game-state :pause)
+    )
+  )
+
 (defn choose-state-component []
   [:div
    [:div @game-state]
    [:div
     [:input {:type     "button" :value "Pause"
-             :on-click #(
-                         (reset! game-state :pause)
-                         (swap! time-shifts conj (state-change-event @game-time (last-time-shift) :pause (last-time-state)))
-                         )}]
+             :on-click #(pause-toggle!)}]
     [:input {:type     "button" :value "Normal"
              :on-click #(
-                         (reset! game-state :normal)
-                         (swap! time-shifts conj (state-change-event @game-time (last-time-shift) :normal (last-time-state)))
+                         (update-events! :normal)
+                         (change-state! :normal)
                          )}]
     [:input {:type     "button" :value "Encounter"
              :on-click #(
@@ -281,4 +295,4 @@
   ;; optionally touch your app-state to force rerendering depending on
   ;; your application
   ;; (swap! app-state update-in [:__figwheel_counter] inc)
-)
+  )
