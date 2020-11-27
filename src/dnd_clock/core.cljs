@@ -239,10 +239,8 @@
 
 
 (defn change-state! [next-state]
-  ;(if-not (= @game-state next-state)
     #(reset! game-state next-state)
-    ;#()
-    ;)
+
     )
 
 (defn update-events! [next-state]
@@ -251,7 +249,7 @@
             (= @game-state next-state))
     (do
       ;(reset! game-state next-state)
-      (swap! time-shifts conj (state-change-event @game-time (last-time-shift) next-state (last-time-state))))
+      (swap! time-shifts conj (state-change-event @game-time (last-time-shift) next-state @game-state)))
     #())
   )
 
