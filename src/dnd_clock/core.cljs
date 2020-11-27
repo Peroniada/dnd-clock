@@ -5,7 +5,8 @@
     [cljs-time.core :as time]
     [cljs-time.format :as date-format]
     [cljs.pprint :refer [pprint]]
-    [alandipert.storage-atom :refer [local-storage]]))
+    [alandipert.storage-atom :refer [local-storage]]
+    [cljs.pprint :refer [pprint]]))
 
 (enable-console-print!)
 
@@ -117,12 +118,13 @@
 (defn initialize-game-state []
   (if-not (empty? (:events @prefs))
     (keyword (:current-state (last (parse-events-json (:events @prefs)))))
-    :normal))
+    :pause))
 
 (def possible-states [:normal :encounter :travel :short-rest :long-rest])
 (def game-state (atom (initialize-game-state)))
 (def game-time (atom (initialize-time)))
 (def time-shifts (atom (initialize-time-shifts)))
+(def timeout-id (atom 0))
 
 (add-watch time-shifts
            :time-changed
@@ -141,10 +143,9 @@
   (:current-state (last-time-event)))
 
 (defn timer-component []
-  (let [date-time (atom initial-time)]
-    (fn []
-      (js/setTimeout #(swap! game-time increase-time-normal game-time) 1000)
-      [:h2 (time-to-string @game-time)])))
+  (fn []
+    (reset! timeout-id (js/setTimeout #(swap! game-time increase-time-normal game-time) 1000))
+    [:h2 (time-to-string @game-time)]))
 
 (defn encounter-component []
   [:h2 (time-to-string @game-time)
@@ -232,20 +233,33 @@
                   [:div (current-phase-info shift)]]) (reverse @time-shifts)))]
    ])
 
-(defn update-events! [next-state]
-  (if-not (zero? (time/in-seconds (time/interval @game-time (last-time-shift))))
-    (swap! time-shifts conj (state-change-event @game-time (last-time-shift) next-state (last-time-state))))
+(defn interval-in-seconds-between [date-time other]
+  (time/in-seconds (time/interval date-time other))
   )
 
+
 (defn change-state! [next-state]
-  (if-not (= @game-state next-state)
-    (reset! game-state next-state)))
+  ;(if-not (= @game-state next-state)
+    #(reset! game-state next-state)
+    ;#()
+    ;)
+    )
+
+(defn update-events! [next-state]
+  (if-not (or
+            (zero? (interval-in-seconds-between (last-time-shift) @game-time))
+            (= @game-state next-state))
+    (do
+      ;(reset! game-state next-state)
+      (swap! time-shifts conj (state-change-event @game-time (last-time-shift) next-state (last-time-state))))
+    #())
+  )
 
 (defn pause-toggle! []
 
   (if (= @game-state :pause)
-    (reset! game-state (keyword (last-time-state)))
-    (reset! game-state :pause)
+    #(reset! game-state (keyword (last-time-state)))
+    #(reset! game-state :pause)
     )
   )
 
@@ -254,31 +268,37 @@
    [:div @game-state]
    [:div
     [:input {:type     "button" :value "Pause"
-             :on-click #(pause-toggle!)}]
+             :on-click #(
+                         (pause-toggle!)
+                         )}]
     [:input {:type     "button" :value "Normal"
              :on-click #(
-                         (update-events! :normal)
                          (change-state! :normal)
+                         (update-events! :normal)
                          )}]
     [:input {:type     "button" :value "Encounter"
              :on-click #(
-                         (reset! game-state :encounter)
-                         (swap! time-shifts conj (state-change-event @game-time (last-time-shift) :encounter (last-time-state)))
+                         (change-state! :encounter)
+                         (update-events! :encounter)
+                         (js/clearTimeout @timeout-id)
                          )}]
     [:input {:type     "button" :value "Travel"
              :on-click #(
-                         (reset! game-state :travel)
-                         (swap! time-shifts conj (state-change-event @game-time (last-time-shift) :travel (last-time-state)))
+                         (change-state! :travel)
+                         (update-events! :travel)
+                         (js/clearTimeout @timeout-id)
                          )}]
     [:input {:type     "button" :value "Short Rest"
              :on-click #(
-                         (reset! game-state :short-rest)
-                         (swap! time-shifts conj (state-change-event @game-time (last-time-shift) :short-rest (last-time-state)))
+                         (change-state! :short-rest)
+                         (update-events! :short-rest)
+                         (js/clearTimeout @timeout-id)
                          )}]
     [:input {:type     "button" :value "Long Rest"
              :on-click #(
-                         (reset! game-state :long-rest)
-                         (swap! time-shifts conj (state-change-event @game-time (last-time-shift) :long-rest (last-time-state)))
+                         (change-state! :long-rest)
+                         (update-events! :long-rest)
+                         (js/clearTimeout @timeout-id)
                          )}]]
    [get-time-component]
    ])
